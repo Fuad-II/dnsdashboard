@@ -721,3 +721,630 @@ if st.session_state.df is not None:
                                 )
 
                                 st.plotly_chart(fig, use_container_width=True)
+# Show forecast data
+                                st.subheader("Forecast Data")
+                                st.dataframe(forecast_df)
+
+                                # Display model metrics
+                                st.subheader("Model Performance")
+                                st.metric("Mean Squared Error", f"{model_info['mse']:.4f}")
+                                st.metric("R² Score", f"{model_info['r2']:.4f}")
+
+                                # Save forecast to session state
+                                st.session_state.predictions = forecast_df
+                                st.session_state.models['linear_regression'] = model_info
+
+                        elif forecasting_method == "XGBoost":
+                            # Create features from date
+                            df_features = df_ts.reset_index()
+                            df_features['year'] = df_features[st.session_state.time_col].dt.year
+                            df_features['month'] = df_features[st.session_state.time_col].dt.month
+                            df_features['day'] = df_features[st.session_state.time_col].dt.day
+                            df_features['dayofweek'] = df_features[st.session_state.time_col].dt.dayofweek
+                            df_features['quarter'] = df_features[st.session_state.time_col].dt.quarter
+                            df_features['is_weekend'] = df_features['dayofweek'].isin([5, 6]).astype(int)
+
+                            # Create lag features if enough data
+                            if len(df_features) > 30:
+                                df_features['lag_1'] = df_features[st.session_state.target_col].shift(1)
+                                df_features['lag_7'] = df_features[st.session_state.target_col].shift(7)
+                                df_features['lag_30'] = df_features[st.session_state.target_col].shift(30)
+                                df_features['rolling_mean_7'] = df_features[st.session_state.target_col].rolling(window=7).mean()
+                                df_features['rolling_std_7'] = df_features[st.session_state.target_col].rolling(window=7).std()
+                                df_features = df_features.dropna()
+
+                            # Select features for XGBoost
+                            feature_cols = [col for col in df_features.columns if col not in
+                                           [st.session_state.time_col, st.session_state.target_col]]
+
+                            # Train XGBoost model
+                            model_info = xgboost_forecast(
+                                df_features,
+                                st.session_state.target_col,
+                                feature_cols
+                            )
+
+                            if model_info:
+                                # Create future dates for prediction
+                                last_date = df_features[st.session_state.time_col].max()
+                                future_dates = [last_date + timedelta(days=i+1) for i in range(forecast_periods)]
+
+                                future_df = pd.DataFrame({st.session_state.time_col: future_dates})
+                                future_df['year'] = future_df[st.session_state.time_col].dt.year
+                                future_df['month'] = future_df[st.session_state.time_col].dt.month
+                                future_df['day'] = future_df[st.session_state.time_col].dt.day
+                                future_df['dayofweek'] = future_df[st.session_state.time_col].dt.dayofweek
+                                future_df['quarter'] = future_df[st.session_state.time_col].dt.quarter
+                                future_df['is_weekend'] = future_df['dayofweek'].isin([5, 6]).astype(int)
+
+                                # For advanced features like lags and rolling stats, we need to forecast iteratively
+                                # This is a simplified approach - for real applications, use recursive forecasting
+                                if 'lag_1' in feature_cols:
+                                    # Get last values from training data
+                                    last_values = df_features[st.session_state.target_col].tail(30).values
+                                    predictions = []
+
+                                    for i in range(forecast_periods):
+                                        # Create a single row for prediction
+                                        current_features = future_df.iloc[i:i+1].copy()
+
+                                        # Add lag features
+                                        if i == 0:
+                                            current_features['lag_1'] = last_values[-1]
+                                            current_features['lag_7'] = last_values[-7] if len(last_values) >= 7 else last_values.mean()
+                                            current_features['lag_30'] = last_values[-30] if len(last_values) >= 30 else last_values.mean()
+                                        else:
+                                            current_features['lag_1'] = predictions[-1]
+                                            current_features['lag_7'] = last_values[-7+i] if i < 7 else predictions[i-7]
+                                            current_features['lag_30'] = last_values[-30+i] if i < 30 else predictions[i-30]
+
+                                        # Add rolling features (simplified)
+                                        current_features['rolling_mean_7'] = np.mean(last_values[-7:])
+                                        current_features['rolling_std_7'] = np.std(last_values[-7:])
+
+                                        # Make prediction
+                                        pred = model_info['model'].predict(current_features[feature_cols])
+                                        predictions.append(pred[0])
+
+                                        # Update last_values for next iteration
+                                        last_values = np.append(last_values[1:], pred[0])
+                                else:
+                                    # Simple prediction without lag features
+                                    predictions = model_info['model'].predict(future_df[feature_cols])
+
+                                # Create forecast dataframe
+                                forecast_df = pd.DataFrame({
+                                    'Date': future_dates,
+                                    'Forecast': predictions
+                                })
+
+                                # Plot actual vs forecast
+                                fig = go.Figure()
+
+                                # Add actual data
+                                fig.add_trace(go.Scatter(
+                                    x=df_features[st.session_state.time_col],
+                                    y=df_features[st.session_state.target_col],
+                                    name='Actual',
+                                    line=dict(color='blue')
+                                ))
+
+                                # Add forecast
+                                fig.add_trace(go.Scatter(
+                                    x=future_dates,
+                                    y=predictions,
+                                    name='Forecast',
+                                    line=dict(color='red', dash='dot')
+                                ))
+
+                                fig.update_layout(
+                                    title='Actual vs Forecast (XGBoost)',
+                                    xaxis_title='Date',
+                                    yaxis_title=st.session_state.target_col,
+                                    legend_title='Legend'
+                                )
+
+                                st.plotly_chart(fig, use_container_width=True)
+
+                                # Show forecast data
+                                st.subheader("Forecast Data")
+                                st.dataframe(forecast_df)
+
+                                # Display model metrics
+                                st.subheader("Model Performance")
+                                st.metric("Mean Squared Error", f"{model_info['mse']:.4f}")
+                                st.metric("R² Score", f"{model_info['r2']:.4f}")
+
+                                # Feature importance
+                                st.subheader("Feature Importance")
+                                feature_imp = pd.DataFrame({
+                                    'Feature': list(model_info['feature_importance'].keys()),
+                                    'Importance': list(model_info['feature_importance'].values())
+                                }).sort_values('Importance', ascending=False)
+
+                                fig = px.bar(
+                                    feature_imp,
+                                    x='Feature',
+                                    y='Importance',
+                                    title='Feature Importance',
+                                    color='Importance'
+                                )
+                                st.plotly_chart(fig, use_container_width=True)
+
+                                # Save forecast to session state
+                                st.session_state.predictions = forecast_df
+                                st.session_state.models['xgboost'] = model_info
+
+                # If previous predictions exist, show download button
+                if st.session_state.predictions is not None:
+                    st.subheader("Download Forecast")
+
+                    @st.cache_data
+                    def convert_df_to_csv(df):
+                        return df.to_csv(index=False).encode('utf-8')
+
+                    csv = convert_df_to_csv(st.session_state.predictions)
+
+                    st.download_button(
+                        "Download Forecast as CSV",
+                        csv,
+                        f"forecast_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                        "text/csv",
+                        key='download-csv'
+                    )
+        else:
+            st.warning("Please select both a time column and a target column in the sidebar to perform demand forecasting.")
+
+    with tab4:
+        st.header("Price Elasticity Analysis")
+
+        # Check if we have columns that could be used for price elasticity
+        numeric_cols = df.select_dtypes(include=['int64', 'float64']).columns.tolist()
+
+        if len(numeric_cols) >= 2:
+            st.markdown("""
+            Price elasticity of demand measures how sensitive the quantity demanded is to price changes.
+            - If elasticity < -1: **Elastic demand** (quantity changes more than price)
+            - If elasticity between -1 and 0: **Inelastic demand** (quantity changes less than price)
+            - If elasticity = -1: **Unit elastic demand** (quantity changes proportionally to price)
+            """)
+
+            # Let user select price and quantity columns
+            price_col = st.selectbox(
+                "Select Price Column",
+                options=numeric_cols,
+                index=0
+            )
+
+            quantity_col = st.selectbox(
+                "Select Quantity/Demand Column",
+                options=[col for col in numeric_cols if col != price_col],
+                index=0
+            )
+
+            if st.button("Calculate Price Elasticity"):
+                with st.spinner("Calculating price elasticity..."):
+                    if st.session_state.time_col:
+                        # If time column is available, sort by time first
+                        df_sorted = df.sort_values(st.session_state.time_col)
+                    else:
+                        df_sorted = df
+
+                    # Calculate elasticity
+                    elasticity_df = demand_elasticity(df_sorted, price_col, quantity_col)
+
+                    if not elasticity_df.empty:
+                        # Drop rows with NaN elasticity (happens at first row and when price doesn't change)
+                        elasticity_df = elasticity_df.dropna()
+
+                        if not elasticity_df.empty:
+                            # Calculate average elasticity
+                            avg_elasticity = elasticity_df['Elasticity'].mean()
+
+                            # Interpret elasticity
+                            if avg_elasticity < -1:
+                                interpretation = "Elastic Demand (highly sensitive to price changes)"
+                                interpretation_color = "red"
+                            elif avg_elasticity > -1 and avg_elasticity < 0:
+                                interpretation = "Inelastic Demand (less sensitive to price changes)"
+                                interpretation_color = "green"
+                            elif avg_elasticity == -1:
+                                interpretation = "Unit Elastic Demand"
+                                interpretation_color = "orange"
+                            else:
+                                interpretation = "Unusual Demand Pattern (positive elasticity)"
+                                interpretation_color = "purple"
+
+                            # Display results
+                            st.metric("Average Price Elasticity", f"{avg_elasticity:.4f}")
+                            st.markdown(f"**Interpretation:** <span style='color:{interpretation_color}'>{interpretation}</span>", unsafe_allow_html=True)
+
+                            # Plot elasticity
+                            fig = px.scatter(
+                                elasticity_df,
+                                x='Price_Change_Pct',
+                                y='Quantity_Change_Pct',
+                                title='Price vs Demand Changes',
+                                color='Elasticity',
+                                color_continuous_scale=['red', 'yellow', 'green'],
+                                hover_data=['Elasticity', 'Demand_Type']
+                            )
+
+                            # Add reference lines
+                            fig.add_shape(
+                                type='line',
+                                x0=elasticity_df['Price_Change_Pct'].min(),
+                                y0=0,
+                                x1=elasticity_df['Price_Change_Pct'].max(),
+                                y1=0,
+                                line=dict(dash='dash', color='gray')
+                            )
+
+                            fig.add_shape(
+                                type='line',
+                                x0=0,
+                                y0=elasticity_df['Quantity_Change_Pct'].min(),
+                                x1=0,
+                                y1=elasticity_df['Quantity_Change_Pct'].max(),
+                                line=dict(dash='dash', color='gray')
+                            )
+
+                            st.plotly_chart(fig, use_container_width=True)
+
+                            # Show elasticity data
+                            st.subheader("Price Elasticity Data")
+                            st.dataframe(elasticity_df, use_container_width=True)
+
+                            # Business recommendations based on elasticity
+                            st.subheader("Business Recommendations")
+
+                            if avg_elasticity < -1.5:
+                                st.markdown("""
+                                ### High Elasticity Detected
+
+                                **Recommendations:**
+                                - Consider **lowering prices** to increase revenue as demand is highly sensitive to price
+                                - Focus on **price-based promotions** and discounts
+                                - Emphasize **competitive pricing** in marketing
+                                - Explore **value-tier products** to capture price-sensitive customers
+                                - Implement **loyalty programs** to reduce price sensitivity
+                                """)
+                            elif avg_elasticity < -1:
+                                st.markdown("""
+                                ### Moderate Elasticity Detected
+
+                                **Recommendations:**
+                                - **Carefully test price changes** as they will impact demand
+                                - Consider **bundling strategies** to increase perceived value
+                                - Implement **segmented pricing** for different customer groups
+                                - Focus on **value communication** in marketing
+                                """)
+                            elif avg_elasticity > -1 and avg_elasticity < -0.5:
+                                st.markdown("""
+                                ### Low Elasticity Detected
+
+                                **Recommendations:**
+                                - There may be **opportunities for price increases** without significant volume loss
+                                - Focus on **product differentiation** and quality improvements
+                                - Emphasize **premium positioning** in marketing
+                                - Consider **brand-building** initiatives to further reduce price sensitivity
+                                """)
+                            elif avg_elasticity > -0.5 and avg_elasticity < 0:
+                                st.markdown("""
+                                ### Very Low Elasticity Detected
+
+                                **Recommendations:**
+                                - **Strong opportunity for price optimization** as demand is minimally affected by price
+                                - Focus on **premium/luxury positioning**
+                                - Emphasize **unique product features** and benefits
+                                - Consider **high-value limited editions** or exclusive offerings
+                                """)
+                            else:
+                                st.markdown("""
+                                ### Unusual Elasticity Pattern Detected
+
+                                **Recommendations:**
+                                - **Conduct further analysis** to understand this unusual relationship
+                                - Check for **data quality issues** or confounding factors
+                                - Consider if **external factors** (promotions, seasonality, competition) are influencing results
+                                - **Segment data** to identify if certain groups exhibit different elasticity patterns
+                                """)
+                        else:
+                            st.warning("Could not calculate elasticity - insufficient price changes in the data.")
+            else:
+                st.info("Select price and quantity columns and click 'Calculate Price Elasticity' to analyze how price changes affect demand.")
+        else:
+            st.warning("Price elasticity analysis requires at least two numeric columns (for price and quantity).")
+
+    with tab5:
+        st.header("Advanced Analysis")
+
+        analysis_type = st.selectbox(
+            "Select Analysis Type",
+            options=[
+                "Segmentation Analysis",
+                "Anomaly Detection",
+                "What-If Scenario Modeling",
+                "KPI Dashboard"
+            ]
+        )
+
+        if analysis_type == "Segmentation Analysis":
+            st.subheader("Customer/Product Segmentation")
+
+            if len(numeric_cols) >= 2:
+                # Select columns for segmentation
+                segmentation_cols = st.multiselect(
+                    "Select columns for segmentation analysis",
+                    options=numeric_cols,
+                    default=numeric_cols[:2] if len(numeric_cols) >= 2 else []
+                )
+
+                if len(segmentation_cols) >= 2:
+                    # Number of segments
+                    num_segments = st.slider("Number of segments", min_value=2, max_value=10, value=3)
+
+                    if st.button("Perform Segmentation"):
+                        with st.spinner("Performing segmentation analysis..."):
+                            try:
+                                from sklearn.cluster import KMeans
+
+                                # Select data for clustering
+                                cluster_data = df[segmentation_cols].copy()
+
+                                # Handle missing values
+                                cluster_data = cluster_data.fillna(cluster_data.mean())
+
+                                # Scale the data
+                                scaler = StandardScaler()
+                                scaled_data = scaler.fit_transform(cluster_data)
+
+                                # Perform K-means clustering
+                                kmeans = KMeans(n_clusters=num_segments, random_state=42, n_init=10)
+                                df['Segment'] = kmeans.fit_predict(scaled_data)
+
+                                # Plot segments
+                                if len(segmentation_cols) == 2:
+                                    # Use scatter plot for 2D segmentation
+                                    fig = px.scatter(
+                                        df,
+                                        x=segmentation_cols[0],
+                                        y=segmentation_cols[1],
+                                        color='Segment',
+                                        title=f'Segmentation Analysis ({segmentation_cols[0]} vs {segmentation_cols[1]})',
+                                        color_discrete_sequence=px.colors.qualitative.Bold
+                                    )
+                                    st.plotly_chart(fig, use_container_width=True)
+                                else:
+                                    # Use pairwise scatter plots for more than 2D
+                                    for i in range(len(segmentation_cols)):
+                                        for j in range(i + 1, len(segmentation_cols)):
+                                            fig = px.scatter(
+                                                df,
+                                                x=segmentation_cols[i],
+                                                y=segmentation_cols[j],
+                                                color='Segment',
+                                                title=f'Segmentation Analysis ({segmentation_cols[i]} vs {segmentation_cols[j]})',
+                                                color_discrete_sequence=px.colors.qualitative.Bold
+                                            )
+                                            st.plotly_chart(fig, use_container_width=True)
+
+                                # Segment statistics
+                                st.subheader("Segment Statistics")
+
+                                segment_stats = df.groupby('Segment')[segmentation_cols].agg(['mean', 'std', 'min', 'max'])
+                                st.dataframe(segment_stats, use_container_width=True)
+
+                                # Segment sizes
+                                segment_sizes = df['Segment'].value_counts().reset_index()
+                                segment_sizes.columns = ['Segment', 'Count']
+                                segment_sizes['Percentage'] = segment_sizes['Count'] / len(df) * 100
+
+                                fig = px.pie(
+                                    segment_sizes,
+                                    values='Count',
+                                    names='Segment',
+                                    title='Segment Distribution',
+                                    color_discrete_sequence=px.colors.qualitative.Bold
+                                )
+                                st.plotly_chart(fig, use_container_width=True)
+
+                                # Business interpretations
+                                st.subheader("Business Interpretations")
+
+                                for segment in range(num_segments):
+                                    segment_data = segment_stats.xs(segment, level='Segment')
+
+                                    st.markdown(f"#### Segment {segment} ({segment_sizes[segment_sizes['Segment']==segment]['Percentage'].values[0]:.1f}% of data)")
+
+                                    # Create a description of this segment based on its values
+                                    characteristics = []
+                                    for col in segmentation_cols:
+                                        mean_val = segment_data.loc[col, 'mean']
+                                        overall_mean = df[col].mean()
+
+                                        if mean_val > overall_mean * 1.2:
+                                            characteristics.append(f"High {col}")
+                                        elif mean_val < overall_mean * 0.8:
+                                            characteristics.append(f"Low {col}")
+                                        else:
+                                            characteristics.append(f"Average {col}")
+
+                                    st.write("**Characteristics:** " + ", ".join(characteristics))
+
+                                    # Business recommendations based on segment
+                                    if "High" in characteristics[0] and "High" in characteristics[1]:
+                                        st.write("**Recommendation:** Premium offerings, loyalty programs, VIP services")
+                                    elif "Low" in characteristics[0] and "Low" in characteristics[1]:
+                                        st.write("**Recommendation:** Entry-level offerings, cost-effective solutions, retention focus")
+                                    elif "High" in characteristics[0] and "Low" in characteristics[1]:
+                                        st.write("**Recommendation:** Value-based offerings, educational content, upgrade paths")
+                                    elif "Low" in characteristics[0] and "High" in characteristics[1]:
+                                        st.write("**Recommendation:** Feature-focused marketing, technical support, specialized solutions")
+                                    else:
+                                        st.write("**Recommendation:** Balanced approach, standard offerings, regular engagement")
+
+                            except Exception as e:
+                                st.error(f"Error performing segmentation: {e}")
+                else:
+                    st.info("Please select at least two columns for segmentation analysis.")
+            else:
+                st.warning("Segmentation analysis requires at least two numeric columns.")
+
+        elif analysis_type == "Anomaly Detection":
+            st.subheader("Anomaly Detection")
+
+            if len(numeric_cols) >= 1:
+                # Select column for anomaly detection
+                anomaly_col = st.selectbox(
+                    "Select column for anomaly detection",
+                    options=numeric_cols
+                )
+
+                # Detection method
+                detection_method = st.selectbox(
+                    "Detection Method",
+                    options=["Z-Score", "IQR (Interquartile Range)", "Isolation Forest"],
+                    index=0
+                )
+
+                if st.button("Detect Anomalies"):
+                    with st.spinner("Detecting anomalies..."):
+                        try:
+                            if detection_method == "Z-Score":
+                                # Z-score threshold
+                                z_threshold = st.slider("Z-score threshold", 1.0, 5.0, 3.0, 0.1)
+
+                                # Calculate Z-scores
+                                z_scores = stats.zscore(df[anomaly_col].dropna())
+                                df_z = df.dropna(subset=[anomaly_col]).copy()
+                                df_z['Z_Score'] = z_scores
+
+                                # Flag anomalies
+                                df_z['Is_Anomaly'] = np.abs(df_z['Z_Score']) > z_threshold
+
+                                # Display anomalies
+                                anomalies = df_z[df_z['Is_Anomaly']]
+
+                                if len(anomalies) > 0:
+                                    st.write(f"Found {len(anomalies)} anomalies using Z-score method:")
+                                    st.dataframe(anomalies)
+
+                                    # Visualize anomalies
+                                    if st.session_state.time_col and st.session_state.time_col in df_z.columns:
+                                        # Time series visualization
+                                        fig = px.line(
+                                            df_z,
+                                            x=st.session_state.time_col,
+                                            y=anomaly_col,
+                                            title=f"Anomaly Detection for {anomaly_col}"
+                                        )
+
+                                        # Add anomalies as points
+                                        fig.add_scatter(
+                                            x=anomalies[st.session_state.time_col],
+                                            y=anomalies[anomaly_col],
+                                            mode='markers',
+                                            marker=dict(color='red', size=10),
+                                            name='Anomalies'
+                                        )
+                                    else:
+                                        # Index-based visualization
+                                        fig = px.line(
+                                            df_z,
+                                            y=anomaly_col,
+                                            title=f"Anomaly Detection for {anomaly_col}"
+                                        )
+
+                                        # Add anomalies as points
+                                        fig.add_scatter(
+                                            x=anomalies.index,
+                                            y=anomalies[anomaly_col],
+                                            mode='markers',
+                                            marker=dict(color='red', size=10),
+                                            name='Anomalies'
+                                        )
+
+                                    st.plotly_chart(fig, use_container_width=True)
+
+                                    # Display anomaly statistics
+                                    st.subheader("Anomaly Statistics")
+
+                                    # Calculate percentage of anomalies
+                                    anomaly_pct = len(anomalies) / len(df_z) * 100
+                                    st.metric("Percentage of Anomalies", f"{anomaly_pct:.2f}%")
+
+                                    # Compare anomalies with normal data
+                                    comparison = pd.DataFrame({
+                                        'Statistic': ['Mean', 'Median', 'Std Dev', 'Min', 'Max'],
+                                        'Normal Data': [
+                                            df_z[~df_z['Is_Anomaly']][anomaly_col].mean(),
+                                            df_z[~df_z['Is_Anomaly']][anomaly_col].median(),
+                                            df_z[~df_z['Is_Anomaly']][anomaly_col].std(),
+                                            df_z[~df_z['Is_Anomaly']][anomaly_col].min(),
+                                            df_z[~df_z['Is_Anomaly']][anomaly_col].max()
+                                        ],
+                                        'Anomalies': [
+                                            anomalies[anomaly_col].mean(),
+                                            anomalies[anomaly_col].median(),
+                                            anomalies[anomaly_col].std(),
+                                            anomalies[anomaly_col].min(),
+                                            anomalies[anomaly_col].max()
+                                        ]
+                                    })
+
+                                    st.dataframe(comparison, use_container_width=True)
+
+                                    # Business impact assessment
+                                    st.subheader("Business Impact Assessment")
+
+                                    # Calculate total value of anomalies
+                                    anomaly_sum = anomalies[anomaly_col].sum()
+                                    normal_sum = df_z[~df_z['Is_Anomaly']][anomaly_col].sum()
+                                    total_sum = df_z[anomaly_col].sum()
+
+                                    impact_pct = (anomaly_sum / total_sum) * 100 if total_sum != 0 else 0
+
+                                    st.metric("Impact of Anomalies", f"{impact_pct:.2f}% of total {anomaly_col}")
+
+                                    if impact_pct > 15:
+                                        st.warning(f"Anomalies represent a significant portion ({impact_pct:.2f}%) of total {anomaly_col}.")
+                                    elif impact_pct > 5:
+                                        st.info(f"Anomalies represent a moderate portion ({impact_pct:.2f}%) of total {anomaly_col}.")
+                                    else:
+                                        st.success(f"Anomalies represent a small portion ({impact_pct:.2f}%) of total {anomaly_col}.")
+                                else:
+                                    st.success(f"No anomalies found using Z-score method with threshold {z_threshold}.")
+
+                            elif detection_method == "IQR (Interquartile Range)":
+                                # Calculate Q1, Q3 and IQR
+                                Q1 = df[anomaly_col].quantile(0.25)
+                                Q3 = df[anomaly_col].quantile(0.75)
+                                IQR = Q3 - Q1
+
+                                # Set threshold
+                                iqr_multiplier = st.slider("IQR multiplier", 1.0, 3.0, 1.5, 0.1)
+
+                                # Define bounds for outliers
+                                lower_bound = Q1 - iqr_multiplier * IQR
+                                upper_bound = Q3 + iqr_multiplier * IQR
+
+                                # Flag anomalies
+                                df_iqr = df.copy()
+                                df_iqr['Is_Anomaly'] = (df_iqr[anomaly_col] < lower_bound) | (df_iqr[anomaly_col] > upper_bound)
+
+                                # Display anomalies
+                                anomalies = df_iqr[df_iqr['Is_Anomaly']]
+
+                                if len(anomalies) > 0:
+                                    st.write(f"Found {len(anomalies)} anomalies using IQR method:")
+                                    st.dataframe(anomalies)
+
+                                    # Visualize anomalies using box plot
+                                    fig = px.box(
+                                        df_iqr,
+                                        y=anomaly_col,
+                                        title=f"Box Plot with IQR Anomalies for {anomaly_col}"
+                                    )
+
+                                    st.plotly_chart(fig, use_container_width=True)
