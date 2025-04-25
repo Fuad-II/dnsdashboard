@@ -237,6 +237,44 @@ def detect_anomalies_isolation_forest(df, anomaly_col, model):
     # Return rows with anomalies
     return df_result[df_result['Is_Anomaly']]
 
+def plot_anomalies(df, anomalies, anomaly_col, time_col=None):
+    """Plot anomalies in the data"""
+    if time_col and time_col in df.columns:
+        # Time series visualization
+        fig = px.line(
+            df,
+            x=time_col,
+            y=anomaly_col,
+            title=f"Anomaly Detection for {anomaly_col}"
+        )
+        
+        # Add anomalies as points
+        fig.add_scatter(
+            x=anomalies[time_col],
+            y=anomalies[anomaly_col],
+            mode='markers',
+            marker=dict(color='red', size=10),
+            name='Anomalies'
+        )
+    else:
+        # Index-based visualization
+        fig = px.line(
+            df,
+            y=anomaly_col,
+            title=f"Anomaly Detection for {anomaly_col}"
+        )
+        
+        # Add anomalies as points
+        fig.add_scatter(
+            x=anomalies.index,
+            y=anomalies[anomaly_col],
+            mode='markers',
+            marker=dict(color='red', size=10),
+            name='Anomalies'
+        )
+    
+    st.plotly_chart(fig, use_container_width=True)
+
 # Function to calculate sales growth
 def calculate_sales_growth(df, date_col, sales_col, freq='M'):
     """Calculate period-over-period sales growth"""
@@ -1455,7 +1493,7 @@ elif detection_method == "Isolation Forest":
     
     # Set contamination parameter
     contamination = st.slider("Contamination (expected proportion of anomalies)", 
-                            0.01, 0.5, 0.1, 0.01)
+                        0.01, 0.5, 0.1, 0.01)
     
     # Prepare data for isolation forest
     X = df[[anomaly_col]].copy()
