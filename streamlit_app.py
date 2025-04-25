@@ -1379,7 +1379,7 @@ if st.session_state.df is not None:
                 model = IsolationForest(contamination=contamination, random_state=42)
                 model.fit(X)
                                         
-                            # Complete the IQR anomaly detection visualization
+            # Complete the IQR anomaly detection visualization
             fig.add_scatter(
                 x=anomalies[st.session_state.time_col],
                 y=anomalies[anomaly_col],
@@ -1388,35 +1388,35 @@ if st.session_state.df is not None:
                 name='Anomalies'
             )
             st.plotly_chart(fig, use_container_width=True)
-                        
-                                    # Display anomaly statistics
+            
+            # Display anomaly statistics
             st.subheader("Anomaly Statistics")
 
-                                    # Calculate percentage of anomalies
+            # Calculate percentage of anomalies
             anomaly_pct = len(anomalies) / len(df_iqr) * 100
             st.metric("Percentage of Anomalies", f"{anomaly_pct:.2f}%")
 
-                                # Compare anomalies with normal data
+            # Compare anomalies with normal data
             comparison = pd.DataFrame({
-                                    'Statistic': ['Mean', 'Median', 'Std Dev', 'Min', 'Max'],
-                                    'Normal Data': [
-                                        df_iqr[~df_iqr['Is_Anomaly']][anomaly_col].mean(),
-                                        df_iqr[~df_iqr['Is_Anomaly']][anomaly_col].median(),
-                                        df_iqr[~df_iqr['Is_Anomaly']][anomaly_col].std(),
-                                        df_iqr[~df_iqr['Is_Anomaly']][anomaly_col].min(),
-                                        df_iqr[~df_iqr['Is_Anomaly']][anomaly_col].max()
-                                    ],
-                                    'Anomalies': [
-                                        anomalies[anomaly_col].mean(),
-                                        anomalies[anomaly_col].median(),
-                                        anomalies[anomaly_col].std(),
-                                        anomalies[anomaly_col].min(),
-                                        anomalies[anomaly_col].max()
-                                    ]
-                                })
+                'Statistic': ['Mean', 'Median', 'Std Dev', 'Min', 'Max'],
+                'Normal Data': [
+                    df_iqr[~df_iqr['Is_Anomaly']][anomaly_col].mean(),
+                    df_iqr[~df_iqr['Is_Anomaly']][anomaly_col].median(),
+                    df_iqr[~df_iqr['Is_Anomaly']][anomaly_col].std(),
+                    df_iqr[~df_iqr['Is_Anomaly']][anomaly_col].min(),
+                    df_iqr[~df_iqr['Is_Anomaly']][anomaly_col].max()
+                ],
+                'Anomalies': [
+                    anomalies[anomaly_col].mean(),
+                    anomalies[anomaly_col].median(),
+                    anomalies[anomaly_col].std(),
+                    anomalies[anomaly_col].min(),
+                    anomalies[anomaly_col].max()
+                ]
+            })
 
             st.dataframe(comparison, use_container_width=True)
-                        
+        
 elif detection_method == "Isolation Forest":
     # Import required library
     from sklearn.ensemble import IsolationForest
