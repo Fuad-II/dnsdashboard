@@ -1397,92 +1397,94 @@ if st.session_state.df is not None:
                                         ]
                                     })
 
-                        st.dataframe(comparison, use_container_width=True)
+                                    st.dataframe(comparison, use_container_width=True)
                         
 elif detection_method == "Isolation Forest":
-                                        # Import required library
-                                        from sklearn.ensemble import IsolationForest
-                                        
-                                        # Set contamination parameter
-                                        contamination = st.slider("Contamination (expected proportion of anomalies)", 
-                                                                0.01, 0.5, 0.1, 0.01)
-                                        
-                                        # Prepare data for isolation forest
-                                        X = df[[anomaly_col]].copy()
-                                        
-                                        # Handle missing values
-                                        X = X.fillna(X.mean())
-                                        
-                                        # Train isolation forest model
-                                        model = IsolationForest(contamination=contamination, random_state=42)
-                                        model.fit(X)
-                                        
-                                        # Predict anomalies
-                                        df_if = df.copy()
-                                        df_if['Anomaly_Score'] = model.decision_function(X)
-                                        df_if['Is_Anomaly'] = model.predict(X) == -1  # -1 for anomalies, 1 for normal
-                                        
-                                        # Display anomalies
-                                        anomalies = df_if[df_if['Is_Anomaly']]
-                                        
-                                        if len(anomalies) > 0:
-                                            st.write(f"Found {len(anomalies)} anomalies using Isolation Forest method:")
-                                            st.dataframe(anomalies)
-                                            
-                                            # Visualize anomalies
-                                            if st.session_state.time_col and st.session_state.time_col in df_if.columns:
-                                                # Time series visualization
-                                                fig = px.line(
-                                                    df_if,
-                                                    x=st.session_state.time_col,
-                                                    y=anomaly_col,
-                                                    title=f"Isolation Forest Anomaly Detection for {anomaly_col}"
-                                                )
-                                                
-                                                # Add anomalies as points
-                                                fig.add_scatter(
-                                                    x=anomalies[st.session_state.time_col],
-                                                    y=anomalies[anomaly_col],
-                                                    mode='markers',
-                                                    marker=dict(color='red', size=10),
-                                                    name='Anomalies'
-                                                )
-                                            else:
-                                                # Index-based visualization
-                                                fig = px.line(
-                                                    df_if,
-                                                    y=anomaly_col,
-                                                    title=f"Isolation Forest Anomaly Detection for {anomaly_col}"
-                                                )
-                                                
-                                                # Add anomalies as points
-                                                fig.add_scatter(
-                                                    x=anomalies.index,
-                                                    y=anomalies[anomaly_col],
-                                                    mode='markers',
-                                                    marker=dict(color='red', size=10),
-                                                    name='Anomalies'
-                                                )
-                                            
-                                            st.plotly_chart(fig, use_container_width=True)
-                                            
-                                            # Visualize anomaly scores
-                                            fig = px.histogram(
-                                                df_if, 
-                                                x='Anomaly_Score',
-                                                color='Is_Anomaly',
-                                                title='Distribution of Anomaly Scores',
-                                                marginal='box'
-                                            )
-                                            st.plotly_chart(fig, use_container_width=True)
-                                            
-                                            # Display anomaly statistics
-                                            st.subheader("Anomaly Statistics")
-                                            anomaly_pct = len(anomalies) / len(df_if) * 100
-                                            st.metric("Percentage of Anomalies", f"{anomaly_pct:.2f}%")
-                                        else:
-                                            st.success(f"No anomalies found using Isolation Forest method with contamination {contamination}.")
-                                            # What-If Scenario Modeling section
+    # Import required library
+    from sklearn.ensemble import IsolationForest
+    
+    # Set contamination parameter
+    contamination = st.slider("Contamination (expected proportion of anomalies)", 
+                            0.01, 0.5, 0.1, 0.01)
+    
+    # Prepare data for isolation forest
+    X = df[[anomaly_col]].copy()
+    
+    # Handle missing values
+    X = X.fillna(X.mean())
+    
+    # Train isolation forest model
+    model = IsolationForest(contamination=contamination, random_state=42)
+    model.fit(X)
+            
+            # Predict anomalies
+    df_if = df.copy()
+    df_if['Anomaly_Score'] = model.decision_function(X)
+    df_if['Is_Anomaly'] = model.predict(X) == -1  # -1 for anomalies, 1 for normal
+            
+    # Display anomalies
+    anomalies = df_if[df_if['Is_Anomaly']]
+            
+if len(anomalies) > 0:
+    st.write(f"Found {len(anomalies)} anomalies using Isolation Forest method:")
+    st.dataframe(anomalies)
+    
+    # Visualize anomalies
+    if st.session_state.time_col and st.session_state.time_col in df_if.columns:
+        # Time series visualization
+        fig = px.line(
+            df_if,
+            x=st.session_state.time_col,
+            y=anomaly_col,
+            title=f"Isolation Forest Anomaly Detection for {anomaly_col}"
+        )
+        
+        # Add anomalies as points
+        fig.add_scatter(
+            x=anomalies[st.session_state.time_col],
+            y=anomalies[anomaly_col],
+            mode='markers',
+            marker=dict(color='red', size=10),
+            name='Anomalies'
+        )
+    else:
+        # Index-based visualization
+        fig = px.line(
+            df_if,
+            y=anomaly_col,
+            title=f"Isolation Forest Anomaly Detection for {anomaly_col}"
+        )
+        
+        # Add anomalies as points
+        fig.add_scatter(
+            x=anomalies.index,
+            y=anomalies[anomaly_col],
+            mode='markers',
+            marker=dict(color='red', size=10),
+            name='Anomalies'
+        )
+    
+    st.plotly_chart(fig, use_container_width=True)
+    
+    # Visualize anomaly scores
+    fig = px.histogram(
+        df_if, 
+        x='Anomaly_Score',
+        color='Is_Anomaly',
+        title='Distribution of Anomaly Scores',
+        marginal='box'
+    )
+    st.plotly_chart(fig, use_container_width=True)
+    
+    # Display anomaly statistics
+    st.subheader("Anomaly Statistics")
+    anomaly_pct = len(anomalies) / len(df_if) * 100
+    st.metric("Percentage of Anomalies", f"{anomaly_pct:.2f}%")
+
+if not len(anomalies) > 0:
+    st.success(f"No anomalies found using Isolation Forest method with contamination {contamination}.")
+
+# What-If Scenario Modeling section
 elif analysis_type == "What-If Scenario Modeling":
     st.subheader("What-If Scenario Analysis")
     
