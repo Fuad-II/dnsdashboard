@@ -1319,7 +1319,7 @@ if st.session_state.df is not None:
                 else:
                     st.success(f"No anomalies found using Z-score method with threshold {z_threshold}.")
             
-            elif detection_method == "IQR (Interquartile Range)":
+            if detection_method == "IQR (Interquartile Range)":
                 # Calculate Q1, Q3 and IQR
                 Q1 = df[anomaly_col].quantile(0.25)
                 Q3 = df[anomaly_col].quantile(0.75)
@@ -1498,12 +1498,11 @@ if len(anomalies) > 0:
     st.subheader("Anomaly Statistics")
     anomaly_pct = len(anomalies) / len(df_if) * 100
     st.metric("Percentage of Anomalies", f"{anomaly_pct:.2f}%")
-
-if not len(anomalies) > 0:
-    st.success(f"No anomalies found using Isolation Forest method with contamination {contamination}.")
+else:
+        st.success(f"No anomalies found using Isolation Forest method with contamination {contamination}.")
 
 # What-If Scenario Modeling section
-elif analysis_type == "What-If Scenario Modeling":
+if analysis_type == "What-If Scenario Modeling":
     st.subheader("What-If Scenario Analysis")
     
     if len(numeric_cols) >= 2:
