@@ -1482,3 +1482,403 @@ elif detection_method == "Isolation Forest":
                                             st.metric("Percentage of Anomalies", f"{anomaly_pct:.2f}%")
                                         else:
                                             st.success(f"No anomalies found using Isolation Forest method with contamination {contamination}.")
+                                            # What-If Scenario Modeling section
+elif analysis_type == "What-If Scenario Modeling":
+    st.subheader("What-If Scenario Analysis")
+    
+    if len(numeric_cols) >= 2:
+        # Select dependent variable (target)
+        dependent_var = st.selectbox(
+            "Select dependent variable (outcome)",
+            options=numeric_cols
+        )
+        
+        # Select independent variables (predictors)
+        independent_vars = st.multiselect(
+            "Select independent variables (predictors)",
+            options=[col for col in numeric_cols if col != dependent_var],
+            default=[col for col in numeric_cols if col != dependent_var][:2]
+        )
+        
+        if len(independent_vars) >= 1 and st.button("Build What-If Model"):
+            with st.spinner("Building regression model for What-If analysis..."):
+                try:
+                    from sklearn.linear_model import LinearRegression
+                    from sklearn.model_selection import train_test_split
+                    
+                    # Prepare data
+                    X = df[independent_vars].copy()
+                    y = df[dependent_var].copy()
+                    
+                    # Handle missing values
+                    X = X.fillna(X.mean())
+                    y = y.fillna(y.mean())
+                    
+                    # Train-test split
+                    X_train, X_test, y_train, y_test = train_test_split(
+                        X, y, test_size=0.2, random_state=42
+                    )
+                    
+                    # Build linear regression model
+                    model = LinearRegression()
+                    model.fit(X_train, y_train)
+                    
+                    # Model evaluation
+                    train_score = model.score(X_train, y_train)
+                    test_score = model.score(X_test, y_test)
+                    
+                    # Display model metrics
+                    st.subheader("Model Performance")
+                    col1, col2 = st.columns(2)
+                    col1.metric("Training R² Score", f"{train_score:.4f}")
+                    col2.metric("Testing R² Score", f"{test_score:.4f}")
+                    
+                    # Display coefficients
+                    coefs = pd.DataFrame({
+                        'Variable': independent_vars,
+                        'Coefficient': model.coef_
+                    })
+                    
+                    st.subheader("Variable Importance")
+                    fig = px.bar(
+                        coefs,
+                        x='Variable',
+                        y='Coefficient',
+                        title='Regression Coefficients',
+                        color='Coefficient',
+                        color_continuous_scale=px.colors.diverging.RdBu,
+                        color_continuous_midpoint=0
+                    )
+                    st.plotly_chart(fig, use_container_width=True)
+                    
+                    # What-If Scenario Builder
+                    st.subheader("Scenario Builder")
+                    st.markdown("""
+                    Adjust the values of the independent variables to see how the dependent variable would change.
+                    Current values are set to the average from your data.
+                    """)
+                    
+                    # Create scenario inputs
+                    scenario_values = {}
+                    for var in independent_vars:
+                        min_val = float(df[var].min())
+                        max_val = float(df[var].max())
+                        mean_val = float(df[var].mean())
+                        
+                        # Determine step size based on the range
+                        range_val = max_val - min_val
+                        step = range_val / 100
+                        
+                        # For small ranges, use smaller step
+                        if range_val < 1:
+                            step = range_val / 20
+                        
+                        scenario_values[var] = st.slider(
+                            f"{var}",
+                            min_value=min_val,
+                            max_value=max_val,
+                            value=mean_val,
+                            step=step
+                        )
+                    
+                    # Create input array for prediction
+                    scenario_input = np.array([[scenario_values[var] for var in independent_vars]])
+                    
+                    # Make prediction
+                    prediction = model.predict(scenario_input)[0]
+                    
+                    # Display prediction
+                    st.subheader("Scenario Prediction")
+                    st.metric(
+                        f"Predicted {dependent_var}",
+                        f"{prediction:.2f}",
+                        delta=f"{prediction - df[dependent_var].mean():.2f} vs. average"
+                    )
+                    
+                    # Create scenario comparison
+                    st.subheader("Sensitivity Analysis")
+                    st.markdown("See how changes in each variable affect the prediction")
+                    
+                    # Select a variable for sensitivity analysis
+                    sensitivity_var = st.selectbox(
+                        "Select variable for sensitivity analysis",
+                        options=independent_vars
+                    )
+                    
+                    # Generate range of values for sensitivity analysis
+                    var_min = df[sensitivity_var].min()
+                    var_max = df[sensitivity_var].max()
+                    var_range = np.linspace(var_min, var_max, 20)
+                    
+                    # Create predictions for each value
+                    sensitivity_results = []
+                    base_scenario = scenario_values.copy()
+                    
+                    for val in var_range:
+                        # Update the selected variable
+                        temp_scenario = base_scenario.copy()
+                        temp_scenario[sensitivity_var] = val
+                        
+                        # Create input array
+                        temp_input = np.array([[temp_scenario[var] for var in independent_vars]])
+                        
+                        # Make prediction
+                        temp_prediction = model.predict(temp_input)[0]
+                        
+                        # Save result
+                        sensitivity_results.append({
+                            sensitivity_var: val,
+                            f"Predicted {dependent_var}": temp_prediction
+                        })
+                    
+                    # Create sensitivity dataframe
+                    sensitivity_df = pd.DataFrame(sensitivity_results)
+                    
+                    # Plot sensitivity analysis
+                    fig = px.line(
+                        sensitivity_df,
+                        x=sensitivity_var,
+                        y=f"Predicted {dependent_var}",
+                        title=f"Sensitivity Analysis: Impact of {sensitivity_var} on {dependent_var}",
+                        markers=True
+                    )
+                    
+                    # Add current selected value vertical line
+                    fig.add_vline(
+                        x=scenario_values[sensitivity_var],
+                        line_dash="dash",
+                        line_color="green",
+                        annotation_text="Current Value",
+                        annotation_position="top right"
+                    )
+                    
+                    st.plotly_chart(fig, use_container_width=True)
+                    
+                    # Business insights
+                    st.subheader("Business Insights")
+                    
+                    # Find the most impactful variable
+                    abs_coefs = coefs.copy()
+                    abs_coefs['Abs_Coefficient'] = abs_coefs['Coefficient'].abs()
+                    most_important_var = abs_coefs.sort_values('Abs_Coefficient', ascending=False).iloc[0]['Variable']
+                    
+                    st.markdown(f"""
+                    ### Key Findings:
+                    
+                    1. **Most Impactful Factor**: {most_important_var} has the strongest effect on {dependent_var}
+                    
+                    2. **Positive Drivers**: {', '.join(coefs[coefs['Coefficient'] > 0]['Variable'].tolist())} 
+                    are positively associated with {dependent_var}
+                    
+                    3. **Negative Drivers**: {', '.join(coefs[coefs['Coefficient'] < 0]['Variable'].tolist())} 
+                    are negatively associated with {dependent_var}
+                    
+                    4. **Model Reliability**: This model explains {test_score:.1%} of the variation in {dependent_var}
+                    """)
+                    
+                    # Save model to session state for reuse
+                    st.session_state.what_if_model = {
+                        'model': model,
+                        'independent_vars': independent_vars,
+                        'dependent_var': dependent_var,
+                        'test_score': test_score
+                    }
+                
+                except Exception as e:
+                    st.error(f"Error building What-If model: {e}")
+        else:
+            st.info("Select at least one independent variable and the dependent variable, then click 'Build What-If Model'.")
+    else:
+        st.warning("What-If analysis requires at least two numeric columns.")
+
+elif analysis_type == "KPI Dashboard":
+    st.subheader("Business KPI Dashboard")
+    
+    if len(numeric_cols) >= 1:
+        # Select KPI metrics
+        kpi_metrics = st.multiselect(
+            "Select KPI metrics to display",
+            options=numeric_cols,
+            default=numeric_cols[:3] if len(numeric_cols) >= 3 else numeric_cols
+        )
+        
+        if len(kpi_metrics) >= 1:
+            # Get time column if available
+            time_col = st.session_state.time_col if 'time_col' in st.session_state and st.session_state.time_col in df.columns else None
+            
+            # Optional group by column
+            categorical_cols = df.select_dtypes(include=['object', 'category']).columns.tolist()
+            group_by_col = None
+            
+            if len(categorical_cols) > 0:
+                use_groupby = st.checkbox("Group metrics by category", value=False)
+                
+                if use_groupby:
+                    group_by_col = st.selectbox(
+                        "Select category for grouping",
+                        options=categorical_cols
+                    )
+            
+            # Generate KPI dashboard
+            st.subheader("Key Performance Indicators")
+            
+            # Create metrics summary
+            metric_cols = st.columns(len(kpi_metrics))
+            
+            for i, metric in enumerate(kpi_metrics):
+                current_val = df[metric].mean()
+                
+                # If time column exists, calculate trend
+                if time_col:
+                    # Sort by time
+                    df_sorted = df.sort_values(time_col)
+                    
+                    # Calculate first half and second half average
+                    mid_point = len(df_sorted) // 2
+                    first_half = df_sorted.iloc[:mid_point][metric].mean()
+                    second_half = df_sorted.iloc[mid_point:][metric].mean()
+                    
+                    # Calculate change
+                    change = second_half - first_half
+                    
+                    metric_cols[i].metric(
+                        f"Avg. {metric}",
+                        f"{current_val:.2f}",
+                        f"{change:.2f}"
+                    )
+                else:
+                    metric_cols[i].metric(f"Avg. {metric}", f"{current_val:.2f}")
+            
+            # Create charts for each KPI
+            for metric in kpi_metrics:
+                st.subheader(f"{metric} Analysis")
+                
+                # Create two columns for charts
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    # Time series or distribution chart
+                    if time_col:
+                        # Time series chart
+                        if group_by_col:
+                            # Grouped time series
+                            fig = px.line(
+                                df.sort_values(time_col),
+                                x=time_col,
+                                y=metric,
+                                color=group_by_col,
+                                title=f"{metric} Over Time by {group_by_col}"
+                            )
+                        else:
+                            # Simple time series
+                            fig = px.line(
+                                df.sort_values(time_col),
+                                x=time_col,
+                                y=metric,
+                                title=f"{metric} Over Time"
+                            )
+                            
+                            # Add trend line
+                            df_sorted = df.sort_values(time_col)
+                            fig.add_trace(
+                                go.Scatter(
+                                    x=df_sorted[time_col],
+                                    y=df_sorted[metric].rolling(window=max(2, len(df_sorted)//10)).mean(),
+                                    mode='lines',
+                                    name=f'Trend ({max(2, len(df_sorted)//10)}-period MA)',
+                                    line=dict(color='red', dash='dot')
+                                )
+                            )
+                    else:
+                        # Distribution chart
+                        fig = px.histogram(
+                            df,
+                            x=metric,
+                            title=f"Distribution of {metric}",
+                            marginal="box"
+                        )
+                    
+                    st.plotly_chart(fig, use_container_width=True)
+                
+                with col2:
+                    # Group comparison or correlation chart
+                    if group_by_col:
+                        # Bar chart by group
+                        group_stats = df.groupby(group_by_col)[metric].mean().reset_index()
+                        fig = px.bar(
+                            group_stats,
+                            x=group_by_col,
+                            y=metric,
+                            title=f"Average {metric} by {group_by_col}",
+                            color=metric
+                        )
+                    else:
+                        # Find another numeric column for correlation
+                        other_numeric = [col for col in numeric_cols if col != metric]
+                        
+                        if other_numeric:
+                            corr_col = other_numeric[0]
+                            fig = px.scatter(
+                                df,
+                                x=metric,
+                                y=corr_col,
+                                title=f"{metric} vs {corr_col}",
+                                trendline="ols"
+                            )
+                        else:
+                            # If no other numeric column, show cumulative distribution
+                            fig = px.ecdf(
+                                df,
+                                x=metric,
+                                title=f"Cumulative Distribution of {metric}"
+                            )
+                    
+                    st.plotly_chart(fig, use_container_width=True)
+            
+            # KPI summary insights
+            st.subheader("KPI Insights")
+            
+            # Generate some basic insights
+            insights = []
+            
+            for metric in kpi_metrics:
+                # Time trend insight
+                if time_col:
+                    df_sorted = df.sort_values(time_col)
+                    first_period = df_sorted.iloc[:len(df_sorted)//3][metric].mean()
+                    last_period = df_sorted.iloc[-len(df_sorted)//3:][metric].mean()
+                    
+                    percent_change = (last_period - first_period) / first_period * 100 if first_period != 0 else 0
+                    
+                    if abs(percent_change) > 10:
+                        direction = "increased" if percent_change > 0 else "decreased"
+                        insights.append(f"**{metric}** has {direction} by {abs(percent_change):.1f}% from the first period to the last period.")
+                
+                # Variation insight
+                cv = df[metric].std() / df[metric].mean() * 100 if df[metric].mean() != 0 else 0
+                
+                if cv > 50:
+                    insights.append(f"**{metric}** shows high variability (CV = {cv:.1f}%), suggesting inconsistent performance.")
+                elif cv < 10:
+                    insights.append(f"**{metric}** is highly stable (CV = {cv:.1f}%), suggesting consistent performance.")
+                
+                # Group differences insight
+                if group_by_col:
+                    group_stats = df.groupby(group_by_col)[metric].mean()
+                    max_group = group_stats.idxmax()
+                    min_group = group_stats.idxmin()
+                    max_val = group_stats.max()
+                    min_val = group_stats.min()
+                    
+                    if max_val > min_val * 1.5:
+                        insights.append(f"**{metric}** varies significantly across {group_by_col}: {max_group} performs {(max_val/min_val - 1)*100:.1f}% better than {min_group}.")
+            
+            if insights:
+                for i, insight in enumerate(insights):
+                    st.markdown(f"{i+1}. {insight}")
+            else:
+                st.info("No significant insights detected in the selected KPIs.")
+        else:
+            st.info("Please select at least one KPI metric to generate the dashboard.")
+    else:
+        st.warning("KPI Dashboard requires at least one numeric column.")
