@@ -1340,64 +1340,82 @@ if st.session_state.df is not None:
                 anomalies = df_iqr[df_iqr['Is_Anomaly']]
                                 
                 if len(anomalies) > 0:
-                                    st.write(f"Found {len(anomalies)} anomalies using IQR method:")
-                                    st.dataframe(anomalies)
-                                    
-                                    # Visualize anomalies using box plot
-                                    fig = px.box(
-                                        df_iqr,
-                                        y=anomaly_col,
-                                        title=f"Box Plot with IQR Anomalies for {anomaly_col}"
-                                    )
-                                    
-                                    st.plotly_chart(fig, use_container_width=True)
-                                    
-                                    # Visualize anomalies on time series if available
-                                    if st.session_state.time_col and st.session_state.time_col in df_iqr.columns:
-                                        fig = px.line(
-                                            df_iqr,
-                                            x=st.session_state.time_col,
-                                            y=anomaly_col,
-                                            title=f"IQR Anomaly Detection for {anomaly_col}"
-                                        )
-                                        
-                                        # Complete the IQR anomaly detection visualization
-                                    fig.add_scatter(
-                                        x=anomalies[st.session_state.time_col],
-                                        y=anomalies[anomaly_col],
-                                        mode='markers',
-                                        marker=dict(color='red', size=10),
-                                        name='Anomalies'
-                                    )
-                                    st.plotly_chart(fig, use_container_width=True)
+                    st.write(f"Found {len(anomalies)} anomalies using IQR method:")
+                    st.dataframe(anomalies)
+                    
+                    # Visualize anomalies using box plot
+                    fig = px.box(
+                        df_iqr,
+                        y=anomaly_col,
+                        title=f"Box Plot with IQR Anomalies for {anomaly_col}"
+                    )
+                    
+                    st.plotly_chart(fig, use_container_width=True)
+                    
+                    # Visualize anomalies on time series if available
+                    if st.session_state.time_col and st.session_state.time_col in df_iqr.columns:
+                        fig = px.line(
+                            df_iqr,
+                            x=st.session_state.time_col,
+                            y=anomaly_col,
+                            title=f"IQR Anomaly Detection for {anomaly_col}"
+                        )
 
+            elif detection_method == "Isolation Forest":
+                # Import required library
+                from sklearn.ensemble import IsolationForest
+                
+                # Set contamination parameter
+                contamination = st.slider("Contamination (expected proportion of anomalies)", 
+                                    0.01, 0.5, 0.1, 0.01)
+                
+                # Prepare data for isolation forest
+                X = df[[anomaly_col]].copy()
+                
+                # Handle missing values
+                X = X.fillna(X.mean())
+                
+                # Train isolation forest model
+                model = IsolationForest(contamination=contamination, random_state=42)
+                model.fit(X)
+                                        
+                            # Complete the IQR anomaly detection visualization
+            fig.add_scatter(
+                x=anomalies[st.session_state.time_col],
+                y=anomalies[anomaly_col],
+                mode='markers',
+                marker=dict(color='red', size=10),
+                name='Anomalies'
+            )
+            st.plotly_chart(fig, use_container_width=True)
+                        
                                     # Display anomaly statistics
-                                    st.subheader("Anomaly Statistics")
+            st.subheader("Anomaly Statistics")
 
                                     # Calculate percentage of anomalies
-                                    anomaly_pct = len(anomalies) / len(df_iqr) * 100
-                                    st.metric("Percentage of Anomalies", f"{anomaly_pct:.2f}%")
+            anomaly_pct = len(anomalies) / len(df_iqr) * 100
+            st.metric("Percentage of Anomalies", f"{anomaly_pct:.2f}%")
 
-                                    # Compare anomalies with normal data
-                                    comparison = pd.DataFrame({
-                                        'Statistic': ['Mean', 'Median', 'Std Dev', 'Min', 'Max'],
-                                        'Normal Data': [
-                                            df_iqr[~df_iqr['Is_Anomaly']][anomaly_col].mean(),
-                                            df_iqr[~df_iqr['Is_Anomaly']][anomaly_col].median(),
-                                            df_iqr[~df_iqr['Is_Anomaly']][anomaly_col].std(),
-                                            df_iqr[~df_iqr['Is_Anomaly']][anomaly_col].min(),
-                                            df_iqr[~df_iqr['Is_Anomaly']][anomaly_col].max()
-                                        ],
-                                        'Anomalies': [
-                                            anomalies[anomaly_col].mean(),
-                                            anomalies[anomaly_col].median(),
-                                            anomalies[anomaly_col].std(),
-                                            anomalies[anomaly_col].min(),
-                                            anomalies[anomaly_col].max()
-                                        ]
-                                    })
+                                # Compare anomalies with normal data
+            comparison = pd.DataFrame({
+                                    'Statistic': ['Mean', 'Median', 'Std Dev', 'Min', 'Max'],
+                                    'Normal Data': [
+                                        df_iqr[~df_iqr['Is_Anomaly']][anomaly_col].mean(),
+                                        df_iqr[~df_iqr['Is_Anomaly']][anomaly_col].median(),
+                                        df_iqr[~df_iqr['Is_Anomaly']][anomaly_col].std(),
+                                        df_iqr[~df_iqr['Is_Anomaly']][anomaly_col].min(),
+                                        df_iqr[~df_iqr['Is_Anomaly']][anomaly_col].max()
+                                    ],
+                                    'Anomalies': [
+                                        anomalies[anomaly_col].mean(),
+                                        anomalies[anomaly_col].median(),
+                                        anomalies[anomaly_col].std(),
+                                        anomalies[anomaly_col].min(),
+                                        anomalies[anomaly_col].max()
+                                    ]
+                                })
 
-                                    st.dataframe(comparison, use_container_width=True)
+            st.dataframe(comparison, use_container_width=True)
                         
 elif detection_method == "Isolation Forest":
     # Import required library
