@@ -218,6 +218,25 @@ def detect_outliers(df, column, z_threshold=3):
     outliers = np.where(np.abs(z_scores) > z_threshold)
     return df.iloc[outliers]
 
+# Function to detect anomalies using Isolation Forest
+def detect_anomalies_isolation_forest(df, anomaly_col, model):
+    """Detect anomalies using Isolation Forest model"""
+    # Prepare data
+    X = df[[anomaly_col]].copy()
+    X = X.fillna(X.mean())
+    
+    # Predict anomalies
+    predictions = model.predict(X)
+    anomaly_scores = model.decision_function(X)
+    
+    # Create dataframe with results
+    df_result = df.copy()
+    df_result['Anomaly_Score'] = anomaly_scores
+    df_result['Is_Anomaly'] = predictions == -1  # -1 for anomalies, 1 for normal
+    
+    # Return rows with anomalies
+    return df_result[df_result['Is_Anomaly']]
+
 # Function to calculate sales growth
 def calculate_sales_growth(df, date_col, sales_col, freq='M'):
     """Calculate period-over-period sales growth"""
@@ -1361,23 +1380,36 @@ if st.session_state.df is not None:
                             title=f"IQR Anomaly Detection for {anomaly_col}"
                         )
 
-            elif detection_method == "Isolation Forest":
-                # Import required library
-                from sklearn.ensemble import IsolationForest
-                
-                # Set contamination parameter
-                contamination = st.slider("Contamination (expected proportion of anomalies)", 
-                                    0.01, 0.5, 0.1, 0.01)
-                
-                # Prepare data for isolation forest
-                X = df[[anomaly_col]].copy()
-                
-                # Handle missing values
-                X = X.fillna(X.mean())
-                
-                # Train isolation forest model
-                model = IsolationForest(contamination=contamination, random_state=42)
-                model.fit(X)
+            if detection_method == "Isolation Forest":
+                try:
+                    # Import required library
+                    from sklearn.ensemble import IsolationForest
+                    
+                    # Set contamination parameter
+                    contamination = st.slider("Contamination (expected proportion of anomalies)", 
+                                        0.01, 0.5, 0.1, 0.01)
+                    
+                    # Prepare data for isolation forest
+                    X = df[[anomaly_col]].copy()
+                    
+                    # Handle missing values
+                    X = X.fillna(X.mean())
+                    
+                    # Train isolation forest model
+                    model = IsolationForest(contamination=contamination, random_state=42)
+                    model.fit(X)
+                    
+                    # Predict anomalies
+                    anomalies = detect_anomalies_isolation_forest(df, anomaly_col, model)
+                    if len(anomalies) > 0:
+                        st.write(f"Found {len(anomalies)} anomalies using Isolation Forest method:")
+                        st.dataframe(anomalies)
+                        # Display visualization and other metrics
+                        plot_anomalies(df, anomalies, anomaly_col, st.session_state.time_col)
+                    else:
+                        st.success(f"No anomalies found using Isolation Forest method with contamination {contamination}")
+                except Exception as e:
+                    st.error(f"Error in Isolation Forest analysis: {e}")
                                         
             # Complete the IQR anomaly detection visualization
             fig.add_scatter(
