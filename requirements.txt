@@ -6,3 +6,4 @@ scipy
 Sklearn
 scikit-learn
 nympy
+statsmodels
