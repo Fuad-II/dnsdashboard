@@ -222,6 +222,11 @@ def detect_outliers(df, column, z_threshold=3):
 def detect_anomalies_isolation_forest(df, anomaly_col, model):
     """Detect anomalies using Isolation Forest model"""
     # Prepare data
+    # Ensure anomaly_col is defined by prompting the user to select a column
+    if 'anomaly_col' not in st.session_state or st.session_state.anomaly_col is None:
+        st.warning("Please select a column for anomaly detection.")
+        return
+    anomaly_col = st.session_state.anomaly_col
     X = df[[anomaly_col]].copy()
     X = X.fillna(X.mean())
     
